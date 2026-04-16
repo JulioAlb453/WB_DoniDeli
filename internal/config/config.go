@@ -3,6 +3,7 @@ package config
 import (
 	"os"
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -11,12 +12,14 @@ type Config struct {
 	RedisURL          string
 	JWTSecret         string
 	HeartbeatInterval time.Duration
+	AllowedOrigins    []string
 
 	MaxMessageSize    int64
 	WriteWait         time.Duration
 	ReadWait          time.Duration
 	MaxConnsPerClient int
 	SendBufferSize    int
+	
 }
 
 func Load() *Config {
@@ -25,6 +28,7 @@ func Load() *Config {
 		RedisURL:          envOrDefault("REDIS_URL", "localhost:6379"),
 		JWTSecret:         envOrDefault("JWT_SECRET", "change-me-in-production"),
 		HeartbeatInterval: durationOrDefault("HEARTBEAT_INTERVAL", 30*time.Second),
+		AllowedOrigins:    parseOrigins(envOrDefault("ALLOWED_ORIGINS", "*")),
 		MaxMessageSize:    int64(intOrDefault("MAX_MESSAGE_SIZE", 4096)),
 		WriteWait:         10 * time.Second,
 		ReadWait:          60 * time.Second,
@@ -47,6 +51,20 @@ func intOrDefault(key string, fallback int) int {
 		}
 	}
 	return fallback
+}
+
+func parseOrigins(raw string) []string {
+	if raw == "*" {
+		return []string{"*"}
+	}
+	parts := strings.Split(raw, ",")
+	origins := make([]string, 0, len(parts))
+	for _, p := range parts {
+		if s := strings.TrimSpace(p); s != "" {
+			origins = append(origins, s)
+		}
+	}
+	return origins
 }
 
 func durationOrDefault(key string, fallback time.Duration) time.Duration {

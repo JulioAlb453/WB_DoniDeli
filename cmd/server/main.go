@@ -57,9 +57,11 @@ func main() {
 		_, _ = w.Write([]byte(`{"status":"ok","clients":` + itoa(h.ActiveClients()) + `}`))
 	})
 
+	withCORS := handler.CORSMiddleware(cfg.AllowedOrigins, mux)
+
 	srv := &http.Server{
 		Addr:         ":" + cfg.Port,
-		Handler:      mux,
+		Handler:      withCORS,
 		ReadTimeout:  15 * time.Second,
 		WriteTimeout: 15 * time.Second,
 		IdleTimeout:  60 * time.Second,

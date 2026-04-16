@@ -3,6 +3,7 @@ package handler
 import (
 	"log/slog"
 	"net/http"
+	"strings"
 
 	"WB-donideli/internal/auth"
 	"WB-donideli/internal/client"
@@ -12,21 +13,34 @@ import (
 	"github.com/gorilla/websocket"
 )
 
-var upgrader = websocket.Upgrader{
-	ReadBufferSize:  1024,
-	WriteBufferSize: 1024,
-	CheckOrigin: func(r *http.Request) bool {
-		return true
-	},
-}
-
 type WSHandler struct {
-	hub *hub.Hub
-	cfg *config.Config
+	hub      *hub.Hub
+	cfg      *config.Config
+	upgrader websocket.Upgrader
 }
 
 func NewWSHandler(h *hub.Hub, cfg *config.Config) *WSHandler {
-	return &WSHandler{hub: h, cfg: cfg}
+	wh := &WSHandler{hub: h, cfg: cfg}
+	wh.upgrader = websocket.Upgrader{
+		ReadBufferSize:  1024,
+		WriteBufferSize: 1024,
+		CheckOrigin:     wh.checkOrigin,
+	}
+	return wh
+}
+
+func (wh *WSHandler) checkOrigin(r *http.Request) bool {
+	if len(wh.cfg.AllowedOrigins) == 1 && wh.cfg.AllowedOrigins[0] == "*" {
+		return true
+	}
+	origin := r.Header.Get("Origin")
+	for _, allowed := range wh.cfg.AllowedOrigins {
+		if strings.EqualFold(origin, allowed) {
+			return true
+		}
+	}
+	slog.Warn("origin rejected", "origin", origin)
+	return false
 }
 
 func (wh *WSHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -48,7 +62,7 @@ func (wh *WSHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	conn, err := upgrader.Upgrade(w, r, nil)
+	conn, err := wh.upgrader.Upgrade(w, r, nil)
 	if err != nil {
 		slog.Error("websocket upgrade failed", "error", err)
 		return
