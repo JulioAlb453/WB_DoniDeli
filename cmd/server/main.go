@@ -48,7 +48,9 @@ func main() {
 
 	mux := http.NewServeMux()
 	wsHandler := handler.NewWSHandler(h, cfg)
+	tokenHandler := handler.NewTokenHandler(cfg)
 	mux.Handle("/ws", wsHandler)
+	mux.Handle("/auth/token", tokenHandler)
 	mux.Handle("/", http.FileServer(http.Dir("static")))
 	mux.HandleFunc("/health", func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")

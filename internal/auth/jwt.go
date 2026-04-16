@@ -3,6 +3,7 @@ package auth
 import (
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/golang-jwt/jwt/v5"
 )
@@ -31,4 +32,16 @@ func ValidateToken(tokenStr, secret string) (string, error) {
 	}
 
 	return claims.UserID, nil
+}
+
+func GenerateToken(userID, secret string, ttl time.Duration) (string, error) {
+	now := time.Now()
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256, &Claims{
+		UserID: userID,
+		RegisteredClaims: jwt.RegisteredClaims{
+			ExpiresAt: jwt.NewNumericDate(now.Add(ttl)),
+			IssuedAt:  jwt.NewNumericDate(now),
+		},
+	})
+	return token.SignedString([]byte(secret))
 }
