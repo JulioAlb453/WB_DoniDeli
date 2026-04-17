@@ -3,11 +3,15 @@ package hub
 import (
 	"encoding/json"
 	"log/slog"
+	"strings"
 	"sync"
 
 	"WB-donideli/internal/client"
 	"WB-donideli/internal/models"
 )
+
+const adminInboxRoomPrefix = "chat:admin@gmail.com:"
+const adminInboxUserID = "admin@gmail.com"
 
 type RedisPublisher interface {
 	Publish(channel string, data []byte) error
@@ -128,7 +132,7 @@ func (h *Hub) sendToRoom(sender *client.Client, msg models.IncomingMessage) {
 		return
 	}
 
-	h.deliverToRoom(msg.Room, payload, sender)
+	h.deliverRoomWithAdminInbox(msg.Room, payload, sender)
 	h.publishToRedis(msg.Room, false, payload)
 }
 
@@ -154,7 +158,38 @@ func (h *Hub) DeliverFromRedis(env models.RedisEnvelope) {
 	if env.Broadcast {
 		h.deliverToAll(env.Payload, nil)
 	} else if env.Room != "" {
-		h.deliverToRoom(env.Room, env.Payload, nil)
+		h.deliverRoomWithAdminInbox(env.Room, env.Payload, nil)
+	}
+}
+
+// deliverRoomWithAdminInbox entrega a miembros de la sala y, si aplica, al admin aunque aún no haya hecho join.
+func (h *Hub) deliverRoomWithAdminInbox(room string, payload []byte, exclude *client.Client) {
+	h.deliverToRoom(room, payload, exclude)
+	h.deliverAdminInboxCopy(room, payload, exclude)
+}
+
+func (h *Hub) deliverAdminInboxCopy(room string, payload []byte, exclude *client.Client) {
+	if !strings.HasPrefix(room, adminInboxRoomPrefix) {
+		return
+	}
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+	for c := range h.clients {
+		if c.ID != adminInboxUserID || c == exclude {
+			continue
+		}
+		if members, ok := h.rooms[room]; ok && members[c] {
+			continue
+		}
+		h.safeSendUnlocked(c, payload)
+	}
+}
+
+func (h *Hub) safeSendUnlocked(c *client.Client, payload []byte) {
+	select {
+	case c.Send <- payload:
+	default:
+		slog.Warn("slow client, dropping message", "client", c.ID)
 	}
 }
 
