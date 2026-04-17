@@ -36,7 +36,7 @@ func main() {
 		redisPub = redisSvc
 	}
 
-	h := hub.New(instanceID, redisPub)
+	h := hub.New(instanceID, redisPub, cfg.AdminChatPeerID, cfg.AdminWsInboxUserID)
 	go h.Run()
 
 	redisCtx, redisCancel := context.WithCancel(context.Background())

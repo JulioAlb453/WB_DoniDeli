@@ -10,9 +10,6 @@ import (
 	"WB-donideli/internal/models"
 )
 
-const adminInboxRoomPrefix = "chat:admin@gmail.com:"
-const adminInboxUserID = "admin@gmail.com"
-
 type RedisPublisher interface {
 	Publish(channel string, data []byte) error
 }
@@ -25,9 +22,12 @@ type Hub struct {
 	mu         sync.RWMutex
 	instanceID string
 	redisPub   RedisPublisher
+
+	adminChatPeerLower string
+	adminWsInboxUserID string
 }
 
-func New(instanceID string, redisPub RedisPublisher) *Hub {
+func New(instanceID string, redisPub RedisPublisher, adminChatPeerID, adminWsInboxUserID string) *Hub {
 	return &Hub{
 		clients:    make(map[*client.Client]bool),
 		rooms:      make(map[string]map[*client.Client]bool),
@@ -35,6 +35,8 @@ func New(instanceID string, redisPub RedisPublisher) *Hub {
 		unregister: make(chan *client.Client, 64),
 		instanceID: instanceID,
 		redisPub:   redisPub,
+		adminChatPeerLower: strings.ToLower(strings.TrimSpace(adminChatPeerID)),
+		adminWsInboxUserID: strings.TrimSpace(adminWsInboxUserID),
 	}
 }
 
@@ -169,13 +171,14 @@ func (h *Hub) deliverRoomWithAdminInbox(room string, payload []byte, exclude *cl
 }
 
 func (h *Hub) deliverAdminInboxCopy(room string, payload []byte, exclude *client.Client) {
-	if !strings.HasPrefix(room, adminInboxRoomPrefix) {
+	if !h.roomInvolvesAdminPeer(room) {
 		return
 	}
 	h.mu.RLock()
 	defer h.mu.RUnlock()
+	inboxLower := strings.ToLower(h.adminWsInboxUserID)
 	for c := range h.clients {
-		if c.ID != adminInboxUserID || c == exclude {
+		if strings.ToLower(c.ID) != inboxLower || c == exclude {
 			continue
 		}
 		if members, ok := h.rooms[room]; ok && members[c] {
@@ -183,6 +186,23 @@ func (h *Hub) deliverAdminInboxCopy(room string, payload []byte, exclude *client
 		}
 		h.safeSendUnlocked(c, payload)
 	}
+}
+
+func (h *Hub) roomInvolvesAdminPeer(room string) bool {
+	if h.adminChatPeerLower == "" {
+		return false
+	}
+	if !strings.HasPrefix(room, "chat:") {
+		return false
+	}
+	rest := strings.TrimPrefix(room, "chat:")
+	parts := strings.Split(rest, ":")
+	if len(parts) != 2 {
+		return false
+	}
+	a := strings.ToLower(strings.TrimSpace(parts[0]))
+	b := strings.ToLower(strings.TrimSpace(parts[1]))
+	return a == h.adminChatPeerLower || b == h.adminChatPeerLower
 }
 
 func (h *Hub) safeSendUnlocked(c *client.Client, payload []byte) {

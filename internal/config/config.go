@@ -19,10 +19,17 @@ type Config struct {
 	ReadWait          time.Duration
 	MaxConnsPerClient int
 	SendBufferSize    int
-	
+
+	AdminChatPeerID string
+	AdminWsInboxUserID string
 }
 
 func Load() *Config {
+	peer := strings.TrimSpace(envOrDefault("ADMIN_CHAT_PEER_ID", "admin@gmail.com"))
+	inbox := strings.TrimSpace(envOrDefault("ADMIN_WS_INBOX_USER_ID", ""))
+	if inbox == "" {
+		inbox = peer
+	}
 	return &Config{
 		Port:              envOrDefault("PORT", "8080"),
 		RedisURL:          envOrDefault("REDIS_URL", "localhost:6379"),
@@ -34,6 +41,8 @@ func Load() *Config {
 		ReadWait:          60 * time.Second,
 		MaxConnsPerClient: intOrDefault("MAX_CONNS_PER_CLIENT", 5),
 		SendBufferSize:    256,
+		AdminChatPeerID:   peer,
+		AdminWsInboxUserID: inbox,
 	}
 }
 
