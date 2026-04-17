@@ -1,6 +1,7 @@
 package config
 
 import (
+	"log/slog"
 	"os"
 	"strconv"
 	"strings"
@@ -25,12 +26,7 @@ type Config struct {
 }
 
 func Load() *Config {
-	peer := strings.TrimSpace(envOrDefault("ADMIN_CHAT_PEER_ID", "admin@gmail.com"))
-	inbox := strings.TrimSpace(envOrDefault("ADMIN_WS_INBOX_USER_ID", ""))
-	if inbox == "" {
-		inbox = peer
-	}
-	return &Config{
+	cfg := &Config{
 		Port:              envOrDefault("PORT", "8080"),
 		RedisURL:          envOrDefault("REDIS_URL", "localhost:6379"),
 		JWTSecret:         envOrDefault("JWT_SECRET", "change-me-in-production"),
@@ -41,9 +37,45 @@ func Load() *Config {
 		ReadWait:          60 * time.Second,
 		MaxConnsPerClient: intOrDefault("MAX_CONNS_PER_CLIENT", 5),
 		SendBufferSize:    256,
-		AdminChatPeerID:   peer,
-		AdminWsInboxUserID: inbox,
 	}
+
+	apiBase := apiBaseURLFromEnv()
+	peer, err := fetchContactoChatPeer(apiBase)
+	if err != nil {
+		if apiBase == "" {
+			slog.Warn("peer de chat no resuelto: el servidor WS es otro proceso distinto al front Angular; " +
+				"debes exportar la misma base de API aquí, p. ej. API_BASE_URL=http://127.0.0.1:8000 " +
+				"(o DONUTS_API_BASE_URL). Si la API sí está levantada pero ves esto, falta esa variable en el shell que ejecuta go run.")
+		} else {
+			slog.Warn("no se pudo obtener peer desde la API", "error", err, "api_base", apiBase)
+		}
+	}
+	if peer == "" {
+		peer = strings.TrimSpace(os.Getenv("ADMIN_CHAT_PEER_ID"))
+		if peer == "" {
+			slog.Warn("ADMIN_CHAT_PEER_ID vacío: copia inbox del hub desactivada; define API_BASE_URL (o DONUTS_API_BASE_URL) o ADMIN_CHAT_PEER_ID")
+		}
+	} else {
+		slog.Info("admin chat peer resuelto desde API (usuario admin en BD)", "peer", peer)
+	}
+
+	inbox := strings.TrimSpace(os.Getenv("ADMIN_WS_INBOX_USER_ID"))
+	if inbox == "" {
+		inbox = peer
+	}
+
+	cfg.AdminChatPeerID = peer
+	cfg.AdminWsInboxUserID = inbox
+	return cfg
+}
+
+func apiBaseURLFromEnv() string {
+	for _, key := range []string{"API_BASE_URL", "DONUTS_API_BASE_URL"} {
+		if v := strings.TrimSpace(os.Getenv(key)); v != "" {
+			return v
+		}
+	}
+	return ""
 }
 
 func envOrDefault(key, fallback string) string {

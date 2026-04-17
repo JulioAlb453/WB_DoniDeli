@@ -16,10 +16,15 @@ import (
 	redissvc "WB-donideli/internal/redis"
 
 	"github.com/google/uuid"
+	"github.com/joho/godotenv"
 )
 
 func main() {
 	slog.SetDefault(slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo})))
+
+	if err := godotenv.Load(); err != nil && !os.IsNotExist(err) {
+		slog.Warn("no se pudo cargar .env", "error", err)
+	}
 
 	cfg := config.Load()
 	instanceID := uuid.NewString()
